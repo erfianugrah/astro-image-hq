@@ -26,8 +26,14 @@ import type {
  */
 const SHADOW_BOOST: ContentAwareRule = {
   when: (c) => c.isDark && c.hasGradient,
-  apply: { quality: 95, encoderPreference: ["avifenc", "sharp"] },
-  reason: "dark gradient detected — boosting quality and forcing avifenc",
+  apply: {
+    quality: 96,
+    encoderPreference: ["avifenc", "sharp"],
+    // Slowest encoder pass for the cases that triggered this package's
+    // existence. ~5-15s per image but max psy-visual fidelity.
+    effort: 8,
+  },
+  reason: "dark gradient detected — boosting quality + slowest encoder pass",
 };
 
 // ---------------------------------------------------------------------------
@@ -44,18 +50,18 @@ const FAST_AVIF: FormatConfig = {
 
 const BALANCED_AVIF: FormatConfig = {
   encoderPreference: ["avifenc", "sharp"],
-  quality: 88,
+  quality: 90,
   depth: 8,
   chromaSubsampling: "4:4:4",
-  effort: 6,
+  effort: 4, // avifenc speed=6 (default), ~0.2-0.5s per image
 };
 
 const HQ_AVIF: FormatConfig = {
   encoderPreference: ["avifenc"],
-  quality: 92,
+  quality: 95,
   depth: 10,
   chromaSubsampling: "4:4:4",
-  effort: 6,
+  effort: 6, // avifenc speed=4, ~3-5s per image, max sensible quality
 };
 
 const FAST_JPEG: FormatConfig = {

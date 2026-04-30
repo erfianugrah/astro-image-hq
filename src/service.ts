@@ -24,6 +24,7 @@ import type {
   Capabilities,
   EncodeRequest,
   EncoderId,
+  FormatConfig,
   HqOptions,
   OutputFormat,
   Profile,
@@ -121,6 +122,11 @@ const service: LocalImageService = {
     state.tally[decision.encoder]++;
     if (decision.contentBoosted) state.tally.boosted++;
 
+    // Component-level overrides (e.g. <Image quality={90} />) win over
+    // profile policy. Only fields present in FormatConfig are merged;
+    // width/height/fit live separately on EncodeRequest.
+    const overridden = applyTransformOverrides(decision.config, transform);
+
     const encoder = ENCODERS[decision.encoder];
     const req: EncodeRequest = {
       input,
@@ -128,7 +134,7 @@ const service: LocalImageService = {
       ...(typeof transform.width === "number" && { width: transform.width }),
       ...(typeof transform.height === "number" && { height: transform.height }),
       ...(typeof transform.fit === "string" && { fit: transform.fit as EncodeRequest["fit"] }),
-      config: decision.config,
+      config: overridden,
     };
 
     return encoder(req);
@@ -143,4 +149,20 @@ export async function flushTally(): Promise<Record<EncoderId | "boosted", number
   const state = await statePromise;
   state.logger.tally(state.tally);
   return state.tally;
+}
+
+/**
+ * Merge transform-level overrides on top of the profile-derived config.
+ * Component-level values (e.g. `<Image quality={90} />`) win over profile
+ * policy and content-aware boosts. Only FormatConfig-shaped fields are
+ * merged; sizing fields stay on EncodeRequest.
+ */
+function applyTransformOverrides(
+  config: FormatConfig,
+  transform: Record<string, unknown>,
+): FormatConfig {
+  const q = transform.quality;
+  if (typeof q === "number") return { ...config, quality: q };
+  if (typeof q === "string" && /^\d+$/.test(q)) return { ...config, quality: Number(q) };
+  return config;
 }
