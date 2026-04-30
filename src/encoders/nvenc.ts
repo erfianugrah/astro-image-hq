@@ -65,11 +65,10 @@ function mapQualityToCq(quality: number): number {
   return Math.round(63 - (q / 100) * 45);
 }
 
-function pixelFormat(_config: FormatConfig): string {
-  // ffmpeg's av1_nvenc wrapper currently only supports 4:2:0 8-bit AVIF
-  // regardless of GPU silicon. Routing already filters out 10-bit / 4:4:4
-  // requests, so we hardcode the only working pixel format here.
-  return "yuv420p";
+function pixelFormat(config: FormatConfig): string {
+  // ffmpeg's av1_nvenc wrapper supports 4:2:0 at 8-bit and 10-bit.
+  // 4:4:4 / 4:2:2 not exposed; routing rejects those before we get here.
+  return config.depth === 10 ? "yuv420p10le" : "yuv420p";
 }
 
 function pipeFfmpeg(input: Buffer, args: string[]): Promise<void> {

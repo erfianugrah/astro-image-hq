@@ -33,13 +33,14 @@ const darkGradient: Characteristics = {
 
 describe("decide — preference walk", () => {
   it("picks first available encoder in preference list", () => {
+    // balanced profile: [nvenc, avifenc, sharp] @ 4:2:0 10-bit → NVENC wins
     const d = decide({
       caps: fullCaps,
       char: flatBright,
       profile: BUILTIN_PROFILES.balanced,
       format: "avif",
     });
-    expect(d.encoder).toBe("avifenc");
+    expect(d.encoder).toBe("nvenc");
   });
 
   it("skips missing encoders and falls through", () => {
@@ -159,15 +160,16 @@ describe("decide — NVENC gating", () => {
     expect(d.reason).toMatch(/gpu|busy|memory/i);
   });
 
-  it("skips NVENC when 10-bit requested (NVENC is 8-bit only)", () => {
+  it("uses NVENC for 4:2:0 10-bit AVIF (luma banding fix without chroma cost)", () => {
     const profile = {
-      ...BUILTIN_PROFILES.hq,
-      onMissingEncoder: "warn" as const,
+      ...BUILTIN_PROFILES.balanced,
       formats: {
-        ...BUILTIN_PROFILES.hq.formats,
+        ...BUILTIN_PROFILES.balanced.formats,
         avif: {
-          ...BUILTIN_PROFILES.hq.formats.avif,
           encoderPreference: ["nvenc", "avifenc", "sharp"] as const,
+          quality: 90,
+          depth: 10 as const,
+          chromaSubsampling: "4:2:0" as const,
         },
       },
     };
@@ -177,8 +179,8 @@ describe("decide — NVENC gating", () => {
       profile,
       format: "avif",
     });
-    expect(d.encoder).toBe("avifenc");
-    expect(d.reason).toMatch(/8-bit|10-bit/i);
+    expect(d.encoder).toBe("nvenc");
+    expect(d.reason).toMatch(/10-bit/i);
   });
 
   it("skips NVENC when 4:4:4 chroma requested", () => {

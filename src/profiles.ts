@@ -21,19 +21,25 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * The shadow-boost rule: dark images with significant gradient get
- * maximum-effort encoding. Targets the banding case.
+ * The shadow-boost rule. Dark gradient images get the full chroma + bit-depth
+ * treatment via avifenc-aom; everything else stays on the fast 4:2:0 path
+ * defined by the profile's default FormatConfig.
+ *
+ * Why: 4:4:4 only matters for chroma smearing in dark-to-light transitions
+ * and high-saturation hard edges. Bright photographic content is visually
+ * indistinguishable at 4:2:0 and encodes much faster.
  */
 const SHADOW_BOOST: ContentAwareRule = {
   when: (c) => c.isDark && c.hasGradient,
   apply: {
-    quality: 96,
+    quality: 95,
+    chromaSubsampling: "4:4:4",
+    depth: 10,
+    codec: "aom",
+    effort: 6, // avifenc speed=4
     encoderPreference: ["avifenc", "sharp"],
-    // Slowest encoder pass for the cases that triggered this package's
-    // existence. ~5-15s per image but max psy-visual fidelity.
-    effort: 8,
   },
-  reason: "dark gradient detected — boosting quality + slowest encoder pass",
+  reason: "dark gradient — promote to 4:4:4 10-bit aom",
 };
 
 // ---------------------------------------------------------------------------
@@ -44,24 +50,40 @@ const FAST_AVIF: FormatConfig = {
   encoderPreference: ["sharp"],
   quality: 80,
   depth: 8,
-  chromaSubsampling: "4:4:4",
+  chromaSubsampling: "4:2:0",
   effort: 4,
 };
 
+// Balanced: GPU NVENC if available, else avifenc-svt (fast CPU AV1).
+// 4:2:0 10-bit fixes luma banding without the chroma cost of 4:4:4.
 const BALANCED_AVIF: FormatConfig = {
-  encoderPreference: ["avifenc", "sharp"],
-  quality: 90,
-  depth: 8,
-  chromaSubsampling: "4:4:4",
-  effort: 4, // avifenc speed=6 (default), ~0.2-0.5s per image
+  encoderPreference: ["nvenc", "avifenc", "sharp"],
+  quality: 88,
+  depth: 10,
+  chromaSubsampling: "4:2:0",
+  codec: "svt",
+  effort: 4,
 };
 
+// HQ profile: strict 4:4:4 10-bit aom for every AVIF. Slower but max quality.
 const HQ_AVIF: FormatConfig = {
   encoderPreference: ["avifenc"],
-  quality: 95,
+  quality: 92,
   depth: 10,
   chromaSubsampling: "4:4:4",
-  effort: 6, // avifenc speed=4, ~3-5s per image, max sensible quality
+  codec: "aom",
+  effort: 6,
+};
+
+// Photo profile default: fast 4:2:0 10-bit (NVENC > avifenc-svt > sharp).
+// Shadow boost upgrades dark gradient images to 4:4:4 aom on the fly.
+const PHOTO_AVIF: FormatConfig = {
+  encoderPreference: ["nvenc", "avifenc", "sharp"],
+  quality: 90,
+  depth: 10,
+  chromaSubsampling: "4:2:0",
+  codec: "svt",
+  effort: 4,
 };
 
 const FAST_JPEG: FormatConfig = {
@@ -129,7 +151,7 @@ const hq: Profile = {
 
 const photo: Profile = {
   name: "photo",
-  formats: hq.formats,
+  formats: { avif: PHOTO_AVIF, webp: WEBP_92, jpeg: HQ_JPEG, png: PNG },
   contentAware: [SHADOW_BOOST],
   onMissingEncoder: "warn",
 };

@@ -148,12 +148,8 @@ function encoderReason(
     if (!caps.nvenc.supportsAvif) {
       return { ok: false, note: "GPU lacks AV1 NVENC (sm < 7.5)" };
     }
-    // ffmpeg's av1_nvenc wrapper only outputs 4:2:0 8-bit AVIF.
-    // Skip NVENC when the config asks for higher quality formats —
-    // those should go to avifenc or sharp.
-    if (config.depth === 10) {
-      return { ok: false, note: "NVENC AVIF is 8-bit only (use avifenc for 10-bit)" };
-    }
+    // ffmpeg's av1_nvenc wrapper supports 4:2:0 8-bit and 4:2:0 10-bit.
+    // 4:4:4 / 4:2:2 are not exposed despite GPU silicon — route those to avifenc.
     if (config.chromaSubsampling === "4:4:4" || config.chromaSubsampling === "4:2:2") {
       return {
         ok: false,
@@ -166,7 +162,7 @@ function encoderReason(
         note: `GPU memory ${(caps.nvenc.memoryUtilization * 100).toFixed(0)}% > ${(gpuMax * 100).toFixed(0)}% threshold`,
       };
     }
-    return { ok: true, note: `nvenc on ${caps.nvenc.gpuName}` };
+    return { ok: true, note: `nvenc on ${caps.nvenc.gpuName} (4:2:0 ${config.depth ?? 8}-bit)` };
   }
 
   return { ok: false, note: `unknown encoder ${id satisfies never}` };

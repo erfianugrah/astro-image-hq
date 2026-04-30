@@ -75,12 +75,17 @@ export interface Characteristics {
 // Profile — encoding strategy preset
 // ---------------------------------------------------------------------------
 
+/** AV1 codec selection — only honored by the `avifenc` encoder. */
+export type AvifCodec = "aom" | "svt" | "rav1e";
+
 export interface FormatConfig {
   readonly encoderPreference: readonly EncoderId[];
   readonly quality: number;
   readonly depth?: 8 | 10;
   readonly chromaSubsampling?: ChromaSubsampling;
   readonly effort?: number;
+  /** AV1 codec for avifenc (`aom` slow/best, `svt` fast/4:2:0-only, `rav1e` mid). */
+  readonly codec?: AvifCodec;
   /** mozjpeg flag for JPEG only. */
   readonly mozjpeg?: boolean;
 }

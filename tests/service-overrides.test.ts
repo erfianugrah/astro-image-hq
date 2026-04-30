@@ -16,7 +16,8 @@ const baseImageConfig = {
       log: "off",
     },
   },
-};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as unknown as Parameters<typeof import("../src/service.js").default.transform>[2];
 
 const dark = async () => {
   const w = 256, h = 256;

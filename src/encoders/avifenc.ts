@@ -56,15 +56,16 @@ function buildArgs(config: FormatConfig, inPath: string, outPath: string): strin
     ? Math.max(0, Math.min(10, 10 - config.effort))
     : 6;
 
-  return [
+  const args = [
     "-q", String(quality),
     "-d", String(depth),
     "-y", yuv,
     "-s", String(speed),
     "-j", "all",
-    inPath,
-    outPath,
   ];
+  if (config.codec) args.push("-c", config.codec);
+  args.push(inPath, outPath);
+  return args;
 }
 
 function mapChroma(c: FormatConfig["chromaSubsampling"]): string {
