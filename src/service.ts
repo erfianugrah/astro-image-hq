@@ -101,12 +101,23 @@ const service: LocalImageService = {
 
     const char = await analyzeImage(input);
 
+    // Apply component-level overrides (e.g. <Image quality={85} />) into
+    // the profile's base config BEFORE content-aware rules run. This way
+    // shadow boost remains a quality floor: bright images take the
+    // component value (the project-wide baseline), but dark gradients get
+    // promoted by the boost regardless of the component setting.
+    const tunedProfile = withFormatOverride(
+      state.profile,
+      format,
+      applyTransformOverrides(state.profile.formats[format], transform),
+    );
+
     let decision;
     try {
       decision = decide({
         caps: state.caps,
         char,
-        profile: state.profile,
+        profile: tunedProfile,
         format,
         gpuMaxMemoryUtilization: opts.gpu?.maxMemoryUtilization,
       });
@@ -122,11 +133,6 @@ const service: LocalImageService = {
     state.tally[decision.encoder]++;
     if (decision.contentBoosted) state.tally.boosted++;
 
-    // Component-level overrides (e.g. <Image quality={90} />) win over
-    // profile policy. Only fields present in FormatConfig are merged;
-    // width/height/fit live separately on EncodeRequest.
-    const overridden = applyTransformOverrides(decision.config, transform);
-
     const encoder = ENCODERS[decision.encoder];
     const req: EncodeRequest = {
       input,
@@ -134,7 +140,7 @@ const service: LocalImageService = {
       ...(typeof transform.width === "number" && { width: transform.width }),
       ...(typeof transform.height === "number" && { height: transform.height }),
       ...(typeof transform.fit === "string" && { fit: transform.fit as EncodeRequest["fit"] }),
-      config: overridden,
+      config: decision.config,
     };
 
     return encoder(req);
@@ -152,10 +158,15 @@ export async function flushTally(): Promise<Record<EncoderId | "boosted", number
 }
 
 /**
- * Merge transform-level overrides on top of the profile-derived config.
- * Component-level values (e.g. `<Image quality={90} />`) win over profile
- * policy and content-aware boosts. Only FormatConfig-shaped fields are
- * merged; sizing fields stay on EncodeRequest.
+ * Merge transform-level overrides into a FormatConfig.
+ *
+ * Used to fold component-level values (e.g. `<Image quality={85} />`) into
+ * the profile's base config BEFORE content-aware rules run. The boost
+ * layer then merges on top, letting it raise quality where needed while
+ * leaving the component value in place for unboosted content.
+ *
+ * Only FormatConfig-shaped fields are merged; sizing fields stay on
+ * EncodeRequest. Astro's standard Image props yield only `quality` here.
  */
 function applyTransformOverrides(
   config: FormatConfig,
@@ -165,4 +176,16 @@ function applyTransformOverrides(
   if (typeof q === "number") return { ...config, quality: q };
   if (typeof q === "string" && /^\d+$/.test(q)) return { ...config, quality: Number(q) };
   return config;
+}
+
+/** Return a new Profile with one format slot replaced. */
+function withFormatOverride(
+  profile: Profile,
+  format: OutputFormat,
+  formatConfig: FormatConfig,
+): Profile {
+  return {
+    ...profile,
+    formats: { ...profile.formats, [format]: formatConfig },
+  };
 }
