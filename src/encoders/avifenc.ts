@@ -1,19 +1,22 @@
 /**
  * avifenc (libavif CLI) encoder strategy.
  *
- * Resizes input via sharp first (sharp is best at resize), then pipes the
- * resized PNG through avifenc on stdin and reads AVIF from stdout.
+ * Resizes input via sharp first (sharp is best at resize), writes PNG to
+ * a temp file, then runs avifenc to produce AVIF. Reads result back.
  *
- * libavif CLI flags (v1.0+):
- *   --depth 8|10|12          Bit depth
- *   --yuv 444|422|420         Chroma subsampling
- *   --min N                   Min quantizer (lower = higher quality)
- *   --max N                   Max quantizer (lower = higher quality)
- *   --speed N                 Encoder speed (0=slow/best ... 10=fast)
- *   -                         Read stdin / write stdout
+ * libavif 1.x flags used:
+ *   -q,--qcolor Q   Quality 0..100 (100 = lossless)
+ *   -d,--depth D    Output bit depth: 8, 10, or 12
+ *   -y,--yuv F      Chroma format: 444 / 422 / 420
+ *   -s,--speed S    Encoder speed 0..10 (0 = slowest/best)
+ *   -j,--jobs J     Worker threads
  */
 
 import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import type { EncodeRequest, EncodeResult, FormatConfig } from "../types.js";
 
@@ -28,28 +31,39 @@ export async function avifencEncoder(req: EncodeRequest): Promise<EncodeResult> 
   }
   const png = await pipeline.png({ compressionLevel: 0 }).toBuffer();
 
-  const args = buildArgs(req.config);
-  const data = await pipeAvifenc(png, args);
-  return { data, format: "avif" };
+  const dir = await mkdtemp(join(tmpdir(), "image-hq-"));
+  const id = randomUUID();
+  const inPath = join(dir, `${id}.png`);
+  const outPath = join(dir, `${id}.avif`);
+
+  try {
+    await writeFile(inPath, png);
+    const args = buildArgs(req.config, inPath, outPath);
+    await runAvifenc(args);
+    const data = await readFile(outPath);
+    return { data: new Uint8Array(data), format: "avif" };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
-function buildArgs(config: FormatConfig): string[] {
+function buildArgs(config: FormatConfig, inPath: string, outPath: string): string[] {
   const depth = config.depth ?? 8;
   const yuv = mapChroma(config.chromaSubsampling);
-  // Map quality (0..100) to quantizer range. avifenc defaults: min 0, max 63.
-  // Higher quality → lower quantizer ceiling.
-  const q = Math.max(0, Math.min(100, config.quality));
-  const max = Math.round(63 - (q / 100) * 53); // q=100→10, q=50→36
-  const min = Math.max(0, max - 12);
-  const speed = config.effort !== undefined ? Math.max(0, 10 - config.effort) : 6;
+  const quality = Math.max(0, Math.min(100, config.quality));
+  // effort 0..10 in our world maps inversely to speed (speed 0 = slowest = best).
+  const speed = config.effort !== undefined
+    ? Math.max(0, Math.min(10, 10 - config.effort))
+    : 6;
 
   return [
-    "--depth", String(depth),
-    "--yuv", yuv,
-    "--min", String(min),
-    "--max", String(max),
-    "--speed", String(speed),
-    "-", "-", // stdin → stdout
+    "-q", String(quality),
+    "-d", String(depth),
+    "-y", yuv,
+    "-s", String(speed),
+    "-j", "all",
+    inPath,
+    outPath,
   ];
 }
 
@@ -59,14 +73,13 @@ function mapChroma(c: FormatConfig["chromaSubsampling"]): string {
   return "444";
 }
 
-function pipeAvifenc(input: Buffer, args: string[]): Promise<Uint8Array> {
+function runAvifenc(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("avifenc", args);
-    const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
 
-    proc.stdout.on("data", (c: Buffer) => chunks.push(c));
     proc.stderr.on("data", (c: Buffer) => errChunks.push(c));
+    proc.stdout.on("data", () => {}); // drain
 
     proc.on("error", reject);
     proc.on("close", (code) => {
@@ -75,10 +88,7 @@ function pipeAvifenc(input: Buffer, args: string[]): Promise<Uint8Array> {
         reject(new Error(`avifenc exited with code ${code}: ${stderr}`));
         return;
       }
-      resolve(new Uint8Array(Buffer.concat(chunks)));
+      resolve();
     });
-
-    proc.stdin.on("error", reject);
-    proc.stdin.end(input);
   });
 }
