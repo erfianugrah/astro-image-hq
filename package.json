@@ -1,0 +1,53 @@
+{
+  "name": "astro-image-hq",
+  "version": "0.1.0",
+  "description": "High-quality image service for Astro: encoder routing across avifenc, NVENC, and sharp with content-aware shadow detection.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./service": {
+      "types": "./dist/service.d.ts",
+      "import": "./dist/service.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
+  },
+  "keywords": [
+    "astro",
+    "astro-integration",
+    "image",
+    "avif",
+    "encoder",
+    "sharp",
+    "libavif",
+    "nvenc"
+  ],
+  "author": "Erfi Anugrah",
+  "license": "MIT",
+  "peerDependencies": {
+    "astro": ">=5.0.0",
+    "sharp": ">=0.33.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "astro": "^6.2.1",
+    "sharp": "^0.34.0",
+    "typescript": "^5.9.0",
+    "vitest": "^2.1.0"
+  }
+}
