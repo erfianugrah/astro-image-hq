@@ -114,6 +114,37 @@ describe.skipIf(!avifencAvailable)("avifencEncoder (integration)", () => {
     expect(meta.format).toBe("heif");
     expect(meta.width).toBe(64);
   });
+
+  it("survives svt codec request on input with odd dimensions (4:2:0)", async () => {
+    // 853x480 — odd width that crashes svt+4:2:0 if we don't drop -c.
+    const odd = await sharp({
+      create: { width: 853, height: 480, channels: 3, background: "#222" },
+    })
+      .png()
+      .toBuffer();
+    const req: EncodeRequest = {
+      input: new Uint8Array(odd),
+      format: "avif",
+      width: 853,
+      height: 480,
+      fit: "inside",
+      config: {
+        encoderPreference: ["avifenc"],
+        quality: 88,
+        depth: 10,
+        chromaSubsampling: "4:2:0",
+        codec: "svt", // would crash without the encoder-level fallback
+        effort: 4,
+      },
+    };
+    const result = await avifencEncoder(req);
+    expect(result.format).toBe("avif");
+    expect(result.data.byteLength).toBeGreaterThan(0);
+    const meta = await sharp(result.data).metadata();
+    expect(meta.format).toBe("heif");
+    expect(meta.width).toBe(853);
+    expect(meta.height).toBe(480);
+  });
 });
 
 describe.skipIf(!nvencAvailable)("nvencEncoder (integration)", () => {

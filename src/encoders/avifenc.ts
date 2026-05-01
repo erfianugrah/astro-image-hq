@@ -29,7 +29,17 @@ export async function avifencEncoder(req: EncodeRequest): Promise<EncodeResult> 
       withoutEnlargement: true,
     });
   }
-  const png = await pipeline.png({ compressionLevel: 0 }).toBuffer();
+  // Materialize PNG and read its actual post-resize dimensions. We can't
+  // trust req.width/req.height alone because sharp's `fit: inside` can
+  // produce odd output dims even from even-numbered constraints (e.g.
+  // 1707x960 source → 853x480 output, fits within 854x480 max).
+  const { data: png, info } = await pipeline
+    .png({ compressionLevel: 0 })
+    .toBuffer({ resolveWithObject: true });
+
+  // Drop codec flag if actual dimensions violate codec constraints.
+  // Mirrors route.ts logic but using post-resize dimensions.
+  const config = adjustConfigForActualDims(req.config, info.width, info.height);
 
   const dir = await mkdtemp(join(tmpdir(), "image-hq-"));
   const id = randomUUID();
@@ -38,13 +48,63 @@ export async function avifencEncoder(req: EncodeRequest): Promise<EncodeResult> 
 
   try {
     await writeFile(inPath, png);
-    const args = buildArgs(req.config, inPath, outPath);
-    await runAvifenc(args);
+    const args = buildArgs(config, inPath, outPath);
+    try {
+      await runAvifenc(args);
+    } catch (err) {
+      // Defense-in-depth: if avifenc still fails despite our checks,
+      // retry without -c flag (use built-in default codec).
+      if (config.codec) {
+        const fallbackArgs = stripCodecFlag(args);
+        await runAvifenc(fallbackArgs);
+      } else {
+        throw err;
+      }
+    }
     const data = await readFile(outPath);
     return { data: new Uint8Array(data), format: "avif" };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+function adjustConfigForActualDims(
+  config: FormatConfig,
+  width: number,
+  height: number,
+): FormatConfig {
+  if (!config.codec) return config;
+  // SVT-AV1: 64x64 minimum, 4:2:0 requires even dimensions.
+  if (config.codec === "svt") {
+    const minDim = Math.min(width, height);
+    if (minDim < 64) return stripCodec(config);
+    if (config.chromaSubsampling === "4:2:0" && (width % 2 !== 0 || height % 2 !== 0)) {
+      return stripCodec(config);
+    }
+  }
+  // rav1e: 32x32 minimum
+  if (config.codec === "rav1e" && Math.min(width, height) < 32) {
+    return stripCodec(config);
+  }
+  return config;
+}
+
+function stripCodec(config: FormatConfig): FormatConfig {
+  const { codec: _drop, ...rest } = config;
+  void _drop;
+  return rest;
+}
+
+function stripCodecFlag(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-c") {
+      i++; // skip the value too
+      continue;
+    }
+    out.push(args[i]!);
+  }
+  return out;
 }
 
 function buildArgs(config: FormatConfig, inPath: string, outPath: string): string[] {

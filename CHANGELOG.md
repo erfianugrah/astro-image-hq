@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] — 2026-05-01
+
+### Fixed
+
+- Encoder-level codec fallback for cases the route can't predict.
+  `transform.width`/`transform.height` are *max* dimensions; sharp's
+  `fit: inside` resize can produce odd actual dimensions even when the
+  caller passed even ones. The avifenc encoder now reads the resized
+  PNG's actual dimensions and drops the `-c` flag when the codec
+  constraints (SVT-AV1 64x64 minimum, 4:2:0 even-parity, rav1e 32x32
+  minimum) are violated post-resize.
+- Defense-in-depth retry: if avifenc still errors despite the
+  pre-flight check (covers unknown future codec constraints), the
+  encoder retries once without `-c` and lets avifenc use its default.
+
 ## [0.1.2] — 2026-05-01
 
 ### Fixed
