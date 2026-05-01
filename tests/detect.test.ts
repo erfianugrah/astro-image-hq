@@ -26,14 +26,33 @@ describe("detectCapabilities", () => {
     expect(caps.sharp.version).toBeTruthy();
   });
 
-  it("detects avifenc when present", async () => {
+  it("detects avifenc when present and parses codec list (libavif 1.4 format)", async () => {
     const caps = await detectCapabilities({
       runner: stub({
-        "avifenc --version": { stdout: "avifenc Version: 1.0.4\nlibavif: 1.0.4" },
+        "avifenc --version": {
+          stdout:
+            "Version: 1.4.1 (dav1d [dec]:1.5.3, aom [enc/dec]:v3.13.3, rav1e [enc]:0.8.1 (UNKNOWN), svt [enc]:v4.1.0-dirty)\nlibyuv : available (1864)",
+        },
+      }),
+    });
+    expect(caps.avifenc).toBeDefined();
+    expect(caps.avifenc!.version).toBe("1.4.1");
+    expect(caps.avifenc!.codecs).toContain("aom");
+    expect(caps.avifenc!.codecs).toContain("svt");
+    expect(caps.avifenc!.codecs).toContain("rav1e");
+  });
+
+  it("parses minimal libavif 1.0 version line (aom only)", async () => {
+    const caps = await detectCapabilities({
+      runner: stub({
+        "avifenc --version": {
+          stdout: "Version: 1.0.4 (dav1d [dec]:1.0.0, aom [enc/dec]:v3.6.1)\n",
+        },
       }),
     });
     expect(caps.avifenc).toBeDefined();
     expect(caps.avifenc!.version).toBe("1.0.4");
+    expect(caps.avifenc!.codecs).toEqual(["aom"]);
   });
 
   it("omits avifenc when binary missing", async () => {

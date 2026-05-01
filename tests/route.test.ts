@@ -7,7 +7,7 @@ const sharpOnly: Capabilities = { sharp: { version: "0.34.5" } };
 
 const fullCaps: Capabilities = {
   sharp: { version: "0.34.5" },
-  avifenc: { version: "1.0.4" },
+  avifenc: { version: "1.4.1", codecs: ["aom", "svt", "rav1e"] },
   ffmpeg: { version: "7.1", encoders: ["av1_nvenc"] },
   nvenc: {
     gpuName: "RTX 5090",
@@ -225,6 +225,61 @@ describe("decide — NVENC gating", () => {
       format: "avif",
     });
     expect(d.encoder).toBe("nvenc");
+  });
+});
+
+describe("decide — codec capability fallback", () => {
+  it("drops codec field when avifenc lacks the requested codec", () => {
+    const capsWithoutSvt: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.0.4", codecs: ["aom"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "svt" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps: capsWithoutSvt,
+      char: flatBright,
+      profile,
+      format: "avif",
+    });
+    expect(d.encoder).toBe("avifenc");
+    // codec should be dropped (or undefined) so avifenc uses default (aom)
+    expect(d.config.codec).toBeUndefined();
+  });
+
+  it("preserves codec when avifenc supports it", () => {
+    const capsWithSvt: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.4.1", codecs: ["aom", "svt", "rav1e"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "svt" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps: capsWithSvt,
+      char: flatBright,
+      profile,
+      format: "avif",
+    });
+    expect(d.encoder).toBe("avifenc");
+    expect(d.config.codec).toBe("svt");
   });
 });
 

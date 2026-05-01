@@ -22,7 +22,7 @@ export interface ImageServiceEntry {
  */
 export default function hqService(options: HqOptions): ImageServiceEntry {
   return {
-    entrypoint: "astro-image-hq/service",
+    entrypoint: "@erfianugrah/astro-image-hq/service",
     config: options,
   };
 }

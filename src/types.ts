@@ -32,6 +32,8 @@ export interface SharpCapability {
 
 export interface AvifencCapability {
   readonly version: string;
+  /** Codecs built into this avifenc binary (aom, svt, rav1e). */
+  readonly codecs: readonly AvifCodec[];
 }
 
 export interface FfmpegCapability {

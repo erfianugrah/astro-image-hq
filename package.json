@@ -1,5 +1,5 @@
 {
-  "name": "astro-image-hq",
+  "name": "@erfianugrah/astro-image-hq",
   "version": "0.1.0",
   "description": "High-quality image service for Astro: encoder routing across avifenc, NVENC, and sharp with content-aware shadow detection.",
   "type": "module",
@@ -18,8 +18,24 @@
   "files": [
     "dist",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erfianugrah/astro-image-hq.git"
+  },
+  "bugs": {
+    "url": "https://github.com/erfianugrah/astro-image-hq/issues"
+  },
+  "homepage": "https://github.com/erfianugrah/astro-image-hq#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",

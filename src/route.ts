@@ -62,15 +62,19 @@ export function decide(args: DecideArgs): RoutingDecision {
   for (const candidate of config.encoderPreference) {
     const reason = encoderReason(candidate, caps, config, gpuMax);
     if (reason.ok) {
+      const finalized = finalizeConfig(candidate, config, caps);
+      const note = finalized.codecDropped
+        ? `${reason.note} (codec=${config.codec} unavailable, using default)`
+        : reason.note;
       return {
         encoder: candidate,
-        config,
+        config: finalized.config,
         reason: composeReason(
           profile,
           candidate,
           contentBoosted,
           boostReason,
-          reason.note,
+          note,
           skipped,
         ),
         contentBoosted,
@@ -122,6 +126,32 @@ function applyContentRules(
     }
   }
   return { config: base, contentBoosted: false };
+}
+
+interface FinalizedConfig {
+  config: FormatConfig;
+  codecDropped: boolean;
+}
+
+/**
+ * Strip config fields the chosen encoder cannot honor. Currently only
+ * relevant for avifenc when the requested codec isn't built in.
+ */
+function finalizeConfig(
+  encoder: EncoderId,
+  config: FormatConfig,
+  caps: Capabilities,
+): FinalizedConfig {
+  if (encoder !== "avifenc" || !config.codec) {
+    return { config, codecDropped: false };
+  }
+  if (caps.avifenc?.codecs.includes(config.codec)) {
+    return { config, codecDropped: false };
+  }
+  // Codec requested but unavailable — drop it so avifenc uses its default.
+  const { codec: _drop, ...rest } = config;
+  void _drop;
+  return { config: rest, codecDropped: true };
 }
 
 interface EncoderAvailability {

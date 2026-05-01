@@ -11,6 +11,7 @@
 
 import { createRequire } from "node:module";
 import type {
+  AvifCodec,
   AvifencCapability,
   Capabilities,
   FfmpegCapability,
@@ -69,9 +70,26 @@ function detectSharp(): SharpCapability {
 async function detectAvifenc(runner: Runner): Promise<AvifencCapability | undefined> {
   const r = await runner("avifenc", ["--version"]);
   if (!r.ok) return undefined;
-  // "avifenc Version: 1.0.4\nlibavif: 1.0.4..." — first version match wins
-  const match = r.stdout.match(/(\d+\.\d+\.\d+)/);
-  return { version: match?.[1] ?? "unknown" };
+  // libavif 1.x version line:
+  //   "Version: 1.4.1 (dav1d [dec]:1.5.3, aom [enc/dec]:v3.13.3, rav1e [enc]:0.8.1, svt [enc]:v4.1.0)"
+  // First semver-like token is the avifenc version (preceded by "Version:").
+  const versionMatch = r.stdout.match(/Version:\s*(\d+\.\d+\.\d+)/);
+  return {
+    version: versionMatch?.[1] ?? "unknown",
+    codecs: parseAvifCodecs(r.stdout),
+  };
+}
+
+function parseAvifCodecs(stdout: string): AvifCodec[] {
+  // Match `<name> [enc]` or `<name> [enc/dec]` / `[dec/enc]`.
+  // Decode-only entries (`[dec]`) are excluded.
+  const out: AvifCodec[] = [];
+  const knownCodecs: readonly AvifCodec[] = ["aom", "svt", "rav1e"];
+  for (const codec of knownCodecs) {
+    const re = new RegExp(`\\b${codec}\\s*\\[(?:enc(?:/dec)?|dec/enc)\\]`);
+    if (re.test(stdout)) out.push(codec);
+  }
+  return out;
 }
 
 async function detectFfmpeg(runner: Runner): Promise<FfmpegCapability | undefined> {
