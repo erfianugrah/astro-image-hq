@@ -341,6 +341,92 @@ describe("decide — codec capability fallback", () => {
     expect(d.config.codec).toBe("svt");
   });
 
+  it("drops svt codec when 4:2:0 width is odd (chroma parity)", () => {
+    const caps: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.0.4", codecs: ["aom", "svt"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "svt" as const,
+          chromaSubsampling: "4:2:0" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps,
+      char: flatBright,
+      profile,
+      format: "avif",
+      width: 853, // odd
+      height: 480,
+    });
+    expect(d.config.codec).toBeUndefined();
+    expect(d.reason).toMatch(/odd|parity|even/i);
+  });
+
+  it("drops svt codec when 4:2:0 height is odd (chroma parity)", () => {
+    const caps: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.0.4", codecs: ["aom", "svt"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "svt" as const,
+          chromaSubsampling: "4:2:0" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps,
+      char: flatBright,
+      profile,
+      format: "avif",
+      width: 1280,
+      height: 721, // odd
+    });
+    expect(d.config.codec).toBeUndefined();
+  });
+
+  it("preserves svt codec at 4:4:4 with odd dimensions (no parity req)", () => {
+    const caps: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.0.4", codecs: ["aom", "svt"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "svt" as const,
+          chromaSubsampling: "4:4:4" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps,
+      char: flatBright,
+      profile,
+      format: "avif",
+      width: 853,
+      height: 481,
+    });
+    // 4:4:4 has no parity constraint — codec preserved
+    expect(d.config.codec).toBe("svt");
+  });
+
   it("preserves aom codec at any size (no minimum)", () => {
     const caps: Capabilities = {
       sharp: { version: "0.34.5" },

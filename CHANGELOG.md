@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] — 2026-05-01
+
+### Fixed
+
+- Drop SVT-AV1 codec when image width or height is odd at 4:2:0 chroma.
+  SVT-AV1 errors with `Source Width must be even for YUV_420 colorspace`
+  on inputs that aom handles internally. Astro generates srcset variants
+  with odd dimensions on some sources, breaking the build.
+- Generalized the codec-constraint table: each codec now has a
+  `CodecConstraints` record with `minDim` and `even420` flags. rav1e
+  picks up its own 32px minimum for free.
+
 ## [0.1.1] — 2026-05-01
 
 ### Fixed

@@ -42,11 +42,22 @@ export interface DecideArgs {
   readonly height?: number;
 }
 
-/** Minimum image dimension (smallest of width/height) each AV1 codec accepts. */
-const CODEC_MIN_SIZE: Record<NonNullable<FormatConfig["codec"]>, number> = {
-  aom: 1, // no practical minimum
-  svt: 64, // SVT-AV1 hard minimum: "Source Width/Height must be at least 64"
-  rav1e: 1, // no practical minimum
+interface CodecConstraints {
+  /** Smaller side must be at least this many pixels. */
+  readonly minDim: number;
+  /**
+   * For 4:2:0 chroma, both dimensions must be even (chroma planes are
+   * half-resolution and need exact integer mapping). aom handles this
+   * internally; SVT-AV1 errors out.
+   */
+  readonly even420: boolean;
+}
+
+/** Per-codec dimension/parity constraints when avifenc -c <codec> is used. */
+const CODEC_CONSTRAINTS: Record<NonNullable<FormatConfig["codec"]>, CodecConstraints> = {
+  aom: { minDim: 1, even420: false },
+  svt: { minDim: 64, even420: true },
+  rav1e: { minDim: 32, even420: false },
 };
 
 const DEFAULT_GPU_MAX_UTIL = 0.5;
@@ -69,11 +80,10 @@ export function decide(args: DecideArgs): RoutingDecision {
   // Walk encoder preference, picking first available + capable.
   // Track skipped encoders so the reason string explains the choice.
   const skipped: string[] = [];
-  const minDim = minDimension(args.width, args.height);
   for (const candidate of config.encoderPreference) {
     const reason = encoderReason(candidate, caps, config, gpuMax);
     if (reason.ok) {
-      const finalized = finalizeConfig(candidate, config, caps, minDim);
+      const finalized = finalizeConfig(candidate, config, caps, args.width, args.height);
       const note = finalized.codecDropped
         ? `${reason.note} (codec=${config.codec} ${finalized.dropReason}, using default)`
         : reason.note;
@@ -146,21 +156,24 @@ interface FinalizedConfig {
 }
 
 /**
- * Strip config fields the chosen encoder cannot honor. Two cases drop
- * the codec field for the avifenc encoder:
+ * Strip config fields the chosen encoder cannot honor. The codec field
+ * is dropped for the avifenc encoder when:
  *   1. The requested codec isn't built into the avifenc binary.
  *   2. The image is below the codec's minimum dimension (e.g. SVT-AV1
- *      requires 64x64 minimum; favicons and small srcset variants fall
- *      below this).
+ *      requires 64x64; rav1e requires 32x32).
+ *   3. The codec rejects odd dimensions for 4:2:0 chroma (SVT-AV1 errors
+ *      with "Source Width must be even for YUV_420 colorspace"); aom
+ *      handles odd dimensions internally.
  *
- * In either case, the codec field is removed so avifenc falls back to
- * its built-in default (typically aom), which has no practical minimum.
+ * In any of those cases, the codec field is removed so avifenc falls
+ * back to its built-in default (typically aom), which is permissive.
  */
 function finalizeConfig(
   encoder: EncoderId,
   config: FormatConfig,
   caps: Capabilities,
-  minDim: number | undefined,
+  width: number | undefined,
+  height: number | undefined,
 ): FinalizedConfig {
   if (encoder !== "avifenc" || !config.codec) {
     return { config, codecDropped: false };
@@ -169,10 +182,20 @@ function finalizeConfig(
   if (!caps.avifenc?.codecs.includes(config.codec)) {
     return dropCodec(config, "unavailable");
   }
+  const constraints = CODEC_CONSTRAINTS[config.codec];
   // Minimum-size check
-  const minSize = CODEC_MIN_SIZE[config.codec];
-  if (minDim !== undefined && minDim < minSize) {
-    return dropCodec(config, `image ${minDim}px < codec min ${minSize}px`);
+  const minDim = smallestSide(width, height);
+  if (minDim !== undefined && minDim < constraints.minDim) {
+    return dropCodec(config, `image ${minDim}px < codec min ${constraints.minDim}px`);
+  }
+  // Parity check (4:2:0 only)
+  if (constraints.even420 && config.chromaSubsampling === "4:2:0") {
+    if (typeof width === "number" && width % 2 !== 0) {
+      return dropCodec(config, `width ${width} odd; codec needs even for 4:2:0`);
+    }
+    if (typeof height === "number" && height % 2 !== 0) {
+      return dropCodec(config, `height ${height} odd; codec needs even for 4:2:0`);
+    }
   }
   return { config, codecDropped: false };
 }
@@ -183,7 +206,7 @@ function dropCodec(config: FormatConfig, reason: string): FinalizedConfig {
   return { config: rest, codecDropped: true, dropReason: reason };
 }
 
-function minDimension(w: number | undefined, h: number | undefined): number | undefined {
+function smallestSide(w: number | undefined, h: number | undefined): number | undefined {
   if (typeof w === "number" && typeof h === "number") return Math.min(w, h);
   if (typeof w === "number") return w;
   if (typeof h === "number") return h;
