@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-05-01
+
+### Fixed
+
+- Drop SVT-AV1 codec when image dimensions are below 64×64. SVT-AV1
+  rejects smaller inputs with `Source Width/Height must be at least 64`,
+  causing build failures on favicons and small srcset variants. The
+  router now falls back to avifenc's default codec (typically aom) for
+  those cases. Manifests as a per-codec `CODEC_MIN_SIZE` table that
+  also covers future codec additions.
+
+### Added
+
+- `width`/`height` fields on `DecideArgs` so the router can apply
+  dimension-aware policies (currently only the SVT-AV1 minimum check).
+
 ## [0.1.0] — 2026-05-01
 
 Initial release.

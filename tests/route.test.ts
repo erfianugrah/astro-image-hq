@@ -277,9 +277,88 @@ describe("decide — codec capability fallback", () => {
       char: flatBright,
       profile,
       format: "avif",
+      width: 1280,
+      height: 720,
     });
     expect(d.encoder).toBe("avifenc");
     expect(d.config.codec).toBe("svt");
+  });
+
+  it("drops svt codec when image dimensions below 64px (SVT-AV1 hard minimum)", () => {
+    const capsWithSvt: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.0.4", codecs: ["aom", "svt", "rav1e"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "svt" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps: capsWithSvt,
+      char: flatBright,
+      profile,
+      format: "avif",
+      width: 32,
+      height: 32,
+    });
+    expect(d.encoder).toBe("avifenc");
+    // Codec dropped → avifenc uses its default (aom)
+    expect(d.config.codec).toBeUndefined();
+    expect(d.reason).toMatch(/min|64/i);
+  });
+
+  it("preserves svt codec at exactly 64px (boundary)", () => {
+    const capsWithSvt: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.0.4", codecs: ["aom", "svt", "rav1e"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "svt" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps: capsWithSvt,
+      char: flatBright,
+      profile,
+      format: "avif",
+      width: 64,
+      height: 64,
+    });
+    expect(d.config.codec).toBe("svt");
+  });
+
+  it("preserves aom codec at any size (no minimum)", () => {
+    const caps: Capabilities = {
+      sharp: { version: "0.34.5" },
+      avifenc: { version: "1.0.4", codecs: ["aom", "svt", "rav1e"] },
+    };
+    const profile = {
+      ...BUILTIN_PROFILES.hq,
+      onMissingEncoder: "warn" as const,
+    };
+    const d = decide({
+      caps,
+      char: flatBright,
+      profile,
+      format: "avif",
+      width: 16,
+      height: 16,
+    });
+    expect(d.config.codec).toBe("aom");
   });
 });
 

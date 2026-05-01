@@ -37,7 +37,17 @@ export interface DecideArgs {
   readonly format: OutputFormat;
   /** Skip NVENC when GPU memory util exceeds this (0..1). Default 0.5. */
   readonly gpuMaxMemoryUtilization?: number;
+  /** Output dimensions — used to gate encoders/codecs with size constraints. */
+  readonly width?: number;
+  readonly height?: number;
 }
+
+/** Minimum image dimension (smallest of width/height) each AV1 codec accepts. */
+const CODEC_MIN_SIZE: Record<NonNullable<FormatConfig["codec"]>, number> = {
+  aom: 1, // no practical minimum
+  svt: 64, // SVT-AV1 hard minimum: "Source Width/Height must be at least 64"
+  rav1e: 1, // no practical minimum
+};
 
 const DEFAULT_GPU_MAX_UTIL = 0.5;
 
@@ -59,12 +69,13 @@ export function decide(args: DecideArgs): RoutingDecision {
   // Walk encoder preference, picking first available + capable.
   // Track skipped encoders so the reason string explains the choice.
   const skipped: string[] = [];
+  const minDim = minDimension(args.width, args.height);
   for (const candidate of config.encoderPreference) {
     const reason = encoderReason(candidate, caps, config, gpuMax);
     if (reason.ok) {
-      const finalized = finalizeConfig(candidate, config, caps);
+      const finalized = finalizeConfig(candidate, config, caps, minDim);
       const note = finalized.codecDropped
-        ? `${reason.note} (codec=${config.codec} unavailable, using default)`
+        ? `${reason.note} (codec=${config.codec} ${finalized.dropReason}, using default)`
         : reason.note;
       return {
         encoder: candidate,
@@ -131,27 +142,52 @@ function applyContentRules(
 interface FinalizedConfig {
   config: FormatConfig;
   codecDropped: boolean;
+  dropReason?: string;
 }
 
 /**
- * Strip config fields the chosen encoder cannot honor. Currently only
- * relevant for avifenc when the requested codec isn't built in.
+ * Strip config fields the chosen encoder cannot honor. Two cases drop
+ * the codec field for the avifenc encoder:
+ *   1. The requested codec isn't built into the avifenc binary.
+ *   2. The image is below the codec's minimum dimension (e.g. SVT-AV1
+ *      requires 64x64 minimum; favicons and small srcset variants fall
+ *      below this).
+ *
+ * In either case, the codec field is removed so avifenc falls back to
+ * its built-in default (typically aom), which has no practical minimum.
  */
 function finalizeConfig(
   encoder: EncoderId,
   config: FormatConfig,
   caps: Capabilities,
+  minDim: number | undefined,
 ): FinalizedConfig {
   if (encoder !== "avifenc" || !config.codec) {
     return { config, codecDropped: false };
   }
-  if (caps.avifenc?.codecs.includes(config.codec)) {
-    return { config, codecDropped: false };
+  // Capability check
+  if (!caps.avifenc?.codecs.includes(config.codec)) {
+    return dropCodec(config, "unavailable");
   }
-  // Codec requested but unavailable — drop it so avifenc uses its default.
+  // Minimum-size check
+  const minSize = CODEC_MIN_SIZE[config.codec];
+  if (minDim !== undefined && minDim < minSize) {
+    return dropCodec(config, `image ${minDim}px < codec min ${minSize}px`);
+  }
+  return { config, codecDropped: false };
+}
+
+function dropCodec(config: FormatConfig, reason: string): FinalizedConfig {
   const { codec: _drop, ...rest } = config;
   void _drop;
-  return { config: rest, codecDropped: true };
+  return { config: rest, codecDropped: true, dropReason: reason };
+}
+
+function minDimension(w: number | undefined, h: number | undefined): number | undefined {
+  if (typeof w === "number" && typeof h === "number") return Math.min(w, h);
+  if (typeof w === "number") return w;
+  if (typeof h === "number") return h;
+  return undefined;
 }
 
 interface EncoderAvailability {

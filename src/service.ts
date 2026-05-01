@@ -120,6 +120,8 @@ const service: LocalImageService = {
         profile: tunedProfile,
         format,
         gpuMaxMemoryUtilization: opts.gpu?.maxMemoryUtilization,
+        ...(typeof transform.width === "number" && { width: transform.width }),
+        ...(typeof transform.height === "number" && { height: transform.height }),
       });
     } catch (e) {
       if (e instanceof MissingEncoderError) {
