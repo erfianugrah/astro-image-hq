@@ -172,4 +172,30 @@ describe.skipIf(!nvencAvailable)("nvencEncoder (integration)", () => {
     const view = Buffer.from(result.data);
     expect(view.toString("ascii", 4, 8)).toBe("ftyp");
   });
+
+  it("falls back to sharp for sub-128px images (NVENC AV1 minimum)", async () => {
+    const tiny = await sharp({
+      create: { width: 64, height: 64, channels: 3, background: "#222" },
+    })
+      .png()
+      .toBuffer();
+    const req = await baseReq({
+      input: new Uint8Array(tiny),
+      width: 64,
+      height: 64,
+      config: {
+        encoderPreference: ["nvenc"],
+        quality: 80,
+        depth: 8,
+        chromaSubsampling: "4:2:0",
+      },
+    });
+    // Should not throw — NVENC encoder delegates to sharp internally
+    const result = await nvencEncoder(req);
+    expect(result.format).toBe("avif");
+    expect(result.data.byteLength).toBeGreaterThan(0);
+    const meta = await sharp(result.data).metadata();
+    expect(meta.width).toBe(64);
+    expect(meta.height).toBe(64);
+  });
 });

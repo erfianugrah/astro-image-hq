@@ -2,11 +2,19 @@
  * NVENC encoder strategy via ffmpeg.
  *
  * Pipes resized PNG through ffmpeg, encoded as AV1 still-image with the
- * av1_nvenc encoder, written to stdout as an AVIF container.
+ * av1_nvenc encoder, written to a temp file (the AVIF muxer requires
+ * seekable output).
  *
- * Requires:
- *   - ffmpeg with av1_nvenc and libavif/avif muxer support
- *   - NVIDIA GPU with compute capability sm_89+ for 4:4:4 10-bit
+ * Constraints:
+ *   - Requires ffmpeg with av1_nvenc + libavif/avif muxer support
+ *   - Requires NVIDIA GPU with AV1 NVENC (sm_75+, Turing or newer)
+ *   - 4:2:0 chroma only (8-bit or 10-bit) — wrapper limitation
+ *   - Minimum frame dimension: 128x128
+ *
+ * The route layer gates on transform dimensions before this encoder is
+ * picked, but post-resize actual dimensions can still drop below the
+ * minimum (e.g. fit:inside on small sources). When that happens we
+ * delegate to the sharp encoder as a fallback rather than crashing.
  */
 
 import { spawn } from "node:child_process";
@@ -16,6 +24,9 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import type { EncodeRequest, EncodeResult, FormatConfig } from "../types.js";
+import { sharpEncoder } from "./sharp.js";
+
+const NVENC_MIN_DIM = 128;
 
 export async function nvencEncoder(req: EncodeRequest): Promise<EncodeResult> {
   const pipeline = sharp(req.input);
@@ -25,15 +36,28 @@ export async function nvencEncoder(req: EncodeRequest): Promise<EncodeResult> {
       withoutEnlargement: true,
     });
   }
-  const png = await pipeline.png({ compressionLevel: 0 }).toBuffer();
+  // Materialize PNG and check actual post-resize dimensions. NVENC AV1
+  // rejects inputs smaller than 128x128 — fall back to sharp for tiny
+  // outputs (favicons, sub-thumbnail variants) rather than crashing.
+  const { data: png, info } = await pipeline
+    .png({ compressionLevel: 0 })
+    .toBuffer({ resolveWithObject: true });
 
-  // ffmpeg's AVIF muxer requires a seekable output, so we route through
-  // a temp file rather than stdout pipe.
+  if (Math.min(info.width, info.height) < NVENC_MIN_DIM) {
+    return sharpEncoder(req);
+  }
+
   const dir = await mkdtemp(join(tmpdir(), "image-hq-"));
   const outPath = join(dir, `${randomUUID()}.avif`);
   try {
     const args = buildArgs(req.config, outPath);
-    await pipeFfmpeg(png, args);
+    try {
+      await pipeFfmpeg(png, args);
+    } catch (err) {
+      // Defense-in-depth: if NVENC still errors despite our checks,
+      // fall back to sharp rather than failing the whole build.
+      return sharpEncoder(req);
+    }
     const data = await readFile(outPath);
     return { data: new Uint8Array(data), format: "avif" };
   } finally {

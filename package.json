@@ -1,6 +1,6 @@
 {
   "name": "@erfianugrah/astro-image-hq",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "High-quality image service for Astro: encoder routing across avifenc, NVENC, and sharp with content-aware shadow detection.",
   "type": "module",
   "main": "./dist/index.js",

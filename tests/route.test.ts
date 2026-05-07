@@ -205,6 +205,32 @@ describe("decide — NVENC gating", () => {
     expect(d.reason).toMatch(/4:2:0|chroma/i);
   });
 
+  it("skips NVENC when image dimensions below 128px (NVENC AV1 minimum)", () => {
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          encoderPreference: ["nvenc", "avifenc", "sharp"] as const,
+          quality: 80,
+          depth: 8 as const,
+          chromaSubsampling: "4:2:0" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps: fullCaps,
+      char: flatBright,
+      profile,
+      format: "avif",
+      width: 64,
+      height: 64,
+    });
+    // NVENC skipped → falls through to avifenc
+    expect(d.encoder).toBe("avifenc");
+    expect(d.reason).toMatch(/NVENC|128/);
+  });
+
   it("uses NVENC when 4:2:0 8-bit AVIF requested and GPU idle", () => {
     const profile = {
       ...BUILTIN_PROFILES.balanced,

@@ -60,6 +60,15 @@ const CODEC_CONSTRAINTS: Record<NonNullable<FormatConfig["codec"]>, CodecConstra
   rav1e: { minDim: 32, even420: false },
 };
 
+/**
+ * NVENC AV1 minimum frame dimension. Inputs smaller than this fail with
+ * "Frame dimensions are less than the minimum supported value" — most
+ * commonly hit by favicons and small thumbnails. Route skips NVENC for
+ * smaller inputs and falls through to the next encoder (typically
+ * avifenc, then sharp).
+ */
+const NVENC_MIN_DIM = 128;
+
 const DEFAULT_GPU_MAX_UTIL = 0.5;
 
 // ---------------------------------------------------------------------------
@@ -81,7 +90,7 @@ export function decide(args: DecideArgs): RoutingDecision {
   // Track skipped encoders so the reason string explains the choice.
   const skipped: string[] = [];
   for (const candidate of config.encoderPreference) {
-    const reason = encoderReason(candidate, caps, config, gpuMax);
+    const reason = encoderReason(candidate, caps, config, gpuMax, args.width, args.height);
     if (reason.ok) {
       const finalized = finalizeConfig(candidate, config, caps, args.width, args.height);
       const note = finalized.codecDropped
@@ -223,6 +232,8 @@ function encoderReason(
   caps: Capabilities,
   config: FormatConfig,
   gpuMax: number,
+  width: number | undefined,
+  height: number | undefined,
 ): EncoderAvailability {
   if (id === "sharp") return { ok: true, note: "sharp ok" };
 
@@ -243,6 +254,14 @@ function encoderReason(
       return {
         ok: false,
         note: `NVENC AVIF is 4:2:0 only (use avifenc for ${config.chromaSubsampling})`,
+      };
+    }
+    // NVENC AV1 minimum frame dimension (favicons / tiny thumbnails fail).
+    const minDim = smallestSide(width, height);
+    if (minDim !== undefined && minDim < NVENC_MIN_DIM) {
+      return {
+        ok: false,
+        note: `image ${minDim}px < NVENC AV1 min ${NVENC_MIN_DIM}px`,
       };
     }
     if (caps.nvenc.memoryUtilization > gpuMax) {

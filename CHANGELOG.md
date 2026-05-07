@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] — 2026-05-01
+
+### Fixed
+
+- NVENC AV1 minimum frame dimension (128x128) gating. Routing skips
+  NVENC for inputs below the minimum so favicons and tiny srcset
+  variants fall through to avifenc. Source: ffmpeg error
+  `InitializeEncoder failed: invalid param (8): Frame dimensions are
+  less than the minimum supported value`.
+- NVENC encoder reads actual post-resize PNG dimensions and delegates
+  to the sharp encoder when below 128px (route's pre-flight uses
+  transform.width/height which can differ from post-resize dims under
+  fit:inside). Defense-in-depth: also falls back to sharp on any
+  unexpected NVENC failure rather than crashing the build.
+
 ## [0.1.3] — 2026-05-01
 
 ### Fixed
