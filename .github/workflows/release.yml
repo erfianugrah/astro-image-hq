@@ -21,11 +21,13 @@ jobs:
         with:
           bun-version: latest
 
+      # NOTE: no registry-url here. setup-node would write an .npmrc with a
+      # (now empty) _authToken, and npm CLI prefers token auth over the OIDC
+      # exchange, which then 404s. OIDC trusted publishing needs NO npmrc auth.
       - name: Setup Node (for npm publish + provenance)
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Install libavif-bin
         run: |
