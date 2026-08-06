@@ -62,4 +62,4 @@ jobs:
       # `npm trust github --allow-publish`). Token-based publishes are no
       # longer supported by npm for 2FA accounts.
       - name: Publish to npm with provenance
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --loglevel verbose
