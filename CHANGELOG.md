@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.4] — 2026-05-01
+## [0.1.5] - 2026-08-06
+
+### Fixed
+
+- Alpha-bearing images (transparent PNGs/logos) route to aom-only. SVT-AV1
+  and av1_nvenc drop the alpha plane entirely, rendering transparent regions
+  as solid black. Routing now skips NVENC and drops non-aom codecs when the
+  image has meaningful transparency (commit 528ced4).
+- AVIF 4:2:0 outputs now clamp resize target dimensions to even values in all
+  three encoders (sharp, avifenc, nvenc). Firefox rejects AVIFs with odd
+  dimensions encoded 4:2:0 ("Image corrupt or truncated") - aom pads odd
+  dimensions and crops in-bitstream, which Chrome honors but Firefox requires
+  a container clap box for. Floor-to-even via a shared helper; 4:4:4 and
+  4:2:2 outputs are not clamped.
+- `propertiesToHash` now includes the package version so that consumer image
+  caches (e.g. Astro's `node_modules/.astro/assets` cache) invalidate on
+  upgrade, ensuring the above fixes reach consumers.
+
+## [0.1.4] - 2026-05-01
 
 ### Fixed
 

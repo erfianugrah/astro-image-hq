@@ -19,12 +19,16 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import type { EncodeRequest, EncodeResult, FormatConfig } from "../types.js";
+import { clampEvenDims, evenOutputDims } from "../even-dims.js";
 
 export async function avifencEncoder(req: EncodeRequest): Promise<EncodeResult> {
   // Pre-resize via sharp; emit PNG so avifenc decodes losslessly.
+  // Clamp target dims to even for 4:2:0 AVIF - Firefox rejects odd-dim
+  // AVIFs without a clap box (Chrome handles aom's in-bitstream crop).
   const pipeline = sharp(req.input);
-  if (req.width || req.height) {
-    pipeline.resize(req.width, req.height, {
+  const even = clampEvenDims(req.width, req.height, req.format, req.config);
+  if (even.width || even.height) {
+    pipeline.resize(even.width, even.height, {
       fit: req.fit ?? "cover",
       withoutEnlargement: true,
     });
@@ -32,10 +36,21 @@ export async function avifencEncoder(req: EncodeRequest): Promise<EncodeResult> 
   // Materialize PNG and read its actual post-resize dimensions. We can't
   // trust req.width/req.height alone because sharp's `fit: inside` can
   // produce odd output dims even from even-numbered constraints (e.g.
-  // 1707x960 source → 853x480 output, fits within 854x480 max).
-  const { data: png, info } = await pipeline
+  // 1707x960 source -> 853x480 output, fits within 854x480 max).
+  let { data: png, info } = await pipeline
     .png({ compressionLevel: 0 })
     .toBuffer({ resolveWithObject: true });
+
+  // Post-resize even-dim clamp for 4:2:0 AVIF - Firefox rejects odd-dim
+  // AVIFs without a clap box.
+  const dims = evenOutputDims(info.width, info.height, req.format, req.config);
+  if (dims.width !== info.width || dims.height !== info.height) {
+    png = await sharp(png)
+      .resize(dims.width, dims.height, { fit: "fill" })
+      .png({ compressionLevel: 0 })
+      .toBuffer();
+    info = { ...info, width: dims.width, height: dims.height };
+  }
 
   // Drop codec flag if actual dimensions violate codec constraints.
   // Mirrors route.ts logic but using post-resize dimensions.

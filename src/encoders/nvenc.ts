@@ -25,23 +25,38 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import type { EncodeRequest, EncodeResult, FormatConfig } from "../types.js";
 import { sharpEncoder } from "./sharp.js";
+import { clampEvenDims, evenOutputDims } from "../even-dims.js";
 
 const NVENC_MIN_DIM = 128;
 
 export async function nvencEncoder(req: EncodeRequest): Promise<EncodeResult> {
   const pipeline = sharp(req.input);
-  if (req.width || req.height) {
-    pipeline.resize(req.width, req.height, {
+  // Clamp target dims to even for 4:2:0 AVIF - Firefox rejects odd-dim
+  // AVIFs without a clap box (Chrome handles aom's in-bitstream crop).
+  const even = clampEvenDims(req.width, req.height, req.format, req.config);
+  if (even.width || even.height) {
+    pipeline.resize(even.width, even.height, {
       fit: req.fit ?? "cover",
       withoutEnlargement: true,
     });
   }
   // Materialize PNG and check actual post-resize dimensions. NVENC AV1
-  // rejects inputs smaller than 128x128 — fall back to sharp for tiny
+  // rejects inputs smaller than 128x128 - fall back to sharp for tiny
   // outputs (favicons, sub-thumbnail variants) rather than crashing.
-  const { data: png, info } = await pipeline
+  let { data: png, info } = await pipeline
     .png({ compressionLevel: 0 })
     .toBuffer({ resolveWithObject: true });
+
+  // Post-resize even-dim clamp for 4:2:0 AVIF - Firefox rejects odd-dim
+  // AVIFs without a clap box.
+  const dims = evenOutputDims(info.width, info.height, req.format, req.config);
+  if (dims.width !== info.width || dims.height !== info.height) {
+    png = await sharp(png)
+      .resize(dims.width, dims.height, { fit: "fill" })
+      .png({ compressionLevel: 0 })
+      .toBuffer();
+    info = { ...info, width: dims.width, height: dims.height };
+  }
 
   if (Math.min(info.width, info.height) < NVENC_MIN_DIM) {
     return sharpEncoder(req);

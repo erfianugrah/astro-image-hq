@@ -181,9 +181,10 @@ interface FinalizedConfig {
  *      handles odd dimensions internally.
  *
  * Additionally, when the image has meaningful transparency, any codec
- * other than aom is dropped: the SVT-AV1 and rav1e 4:2:0 paths lose the
- * alpha plane (transparent logos render as solid black), while aom
- * encodes the alpha auxiliary plane correctly.
+ * other than aom is dropped. SVT-AV1 and av1_nvenc drop the alpha plane
+ * (transparent logos render as solid black); aom encodes the alpha
+ * auxiliary plane correctly. rav1e empirically preserves alpha but we
+ * conservatively route alpha to aom-only.
  *
  * In any of those cases, the codec field is removed so avifenc falls
  * back to its built-in default (typically aom), which is permissive.

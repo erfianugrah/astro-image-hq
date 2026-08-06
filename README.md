@@ -130,6 +130,18 @@ shape including `ContentAwareRule`.
 
 ## Known limitations
 
+- **Alpha transparency routing**: AVIF encoders SVT-AV1 and av1_nvenc drop
+  the alpha plane (transparent logos render as solid black). The service
+  auto-detects meaningful alpha via `analyzeImage()` and routes those images
+  to aom (via avifenc or sharp), which carries the alpha auxiliary plane
+  correctly. The alpha guard skips NVENC entirely and drops non-aom codec
+  flags - the aom-only conservative rule is load-bearing.
+- **Even-dimension clamp for 4:2:0 AVIF**: Firefox rejects AVIFs with odd
+  dimensions encoded 4:2:0 ("Image corrupt or truncated"). aom pads odd
+  dimensions and crops in-bitstream - Chrome honors this, Firefox does not
+  without a container `clap` box. All three encoders clamp resize output
+  dimensions to even (floor) when the output is AVIF with 4:2:0 chroma.
+  4:4:4 and 4:2:2 outputs are not clamped.
 - **NVENC chroma**: `av1_nvenc` outputs 4:2:0 only. Routing automatically
   skips NVENC when 4:4:4 or 4:2:2 is requested and routes to avifenc.
   4:4:4 hardware encoding is not yet exposed by ffmpeg or NVIDIA's

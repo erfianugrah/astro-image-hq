@@ -14,6 +14,9 @@
 
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import service from "../src/service.js";
 
 const photoConfig = {
@@ -116,5 +119,17 @@ describe("service: override precedence (boost as quality floor)", () => {
     // Both must be 10-bit (boost's depth=10).
     const meta = await sharp(hi.data).metadata();
     expect(meta.bitsPerSample).toBe(10);
+  });
+});
+
+describe("propertiesToHash", () => {
+  it("includes the package version so consumer caches invalidate on upgrade", () => {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const pkgVersion = JSON.parse(
+      readFileSync(resolve(__dirname, "..", "package.json"), "utf-8"),
+    ).version;
+    expect(pkgVersion).toBe("0.1.5");
+    expect(service.propertiesToHash).toBeDefined();
+    expect(service.propertiesToHash).toContain(pkgVersion);
   });
 });

@@ -12,6 +12,9 @@
 
 import baseSharpService from "astro/assets/services/sharp";
 import type { LocalImageService } from "astro";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { detectCapabilities } from "./detect.js";
 import { analyzeImage } from "./analyze.js";
 import { decide, MissingEncoderError } from "./route.js";
@@ -29,6 +32,11 @@ import type {
   OutputFormat,
   Profile,
 } from "./types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PKG_VERSION = JSON.parse(
+  readFileSync(resolve(__dirname, "..", "package.json"), "utf-8"),
+).version as string;
 
 const sharpService = baseSharpService;
 
@@ -79,6 +87,7 @@ const service: LocalImageService = {
     "_encoder",
     "_depth",
     "_chroma",
+    PKG_VERSION,
   ],
 
   async transform(inputBuffer, transform, imageConfig) {

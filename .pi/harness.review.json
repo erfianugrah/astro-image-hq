@@ -1,0 +1,65 @@
+{
+  "task": "Review and improve the alpha-routing fix (commit 528ced4) and prepare the 0.1.5 release. You may ONLY modify src/**, tests/**, README.md, CHANGELOG.md, package.json. Run tests with `bun run test`, types with `bun run typecheck`, build with `bun run build`. CONTEXT - four verified findings: (1) FIREFOX BUG (the big one): AVIFs with ODD dimensions encoded 4:2:0 fail to decode in Firefox ('Image corrupt or truncated') - 80 of 318 AVIFs on a real site. aom pads odd dims and crops in-bitstream, which Chrome honors but Firefox rejects without a container clap box. FIX: clamp resize output dimensions to EVEN whenever the output config is AVIF with chromaSubsampling 4:2:0, in ALL THREE encoders (src/encoders/avifenc.ts, nvenc.ts, sharp.ts - each resizes independently). Floor to even (never exceed the caller's max dims under fit:inside). Factor the clamp into ONE shared helper (new small module or an existing util) - do not triplicate logic. 4:4:4 and 4:2:2 outputs are NOT clamped (4:2:2 needs even width only - if you handle it, width-only; 4:4:4 untouched). Add unit tests: an odd-dimension request through each encoder's resize path produces even dims; a 4:4:4 request is left odd. (2) CACHE INVALIDATION BUG: service.ts propertiesToHash lists src/width/height/format/quality/_profile/_encoder/_depth/_chroma - but NOT the service version. A consumer's warm Astro image cache (node_modules/.astro/assets) would keep serving pre-fix AVIFs after upgrade, so fix (1) would not ship. FIX: add the package version (read it from package.json at module load, or inject a constant) to propertiesToHash. Add a test asserting it is present and non-empty. (3) COMMENT ACCURACY: src/route.ts (finalizeConfig comment) says 'the SVT-AV1 and rav1e 4:2:0 paths lose the alpha plane' - VERIFIED WRONG about rav1e (empirical: avifenc -c rav1e preserved 62% transparency on a test logo; svt dropped it; aom kept it). Correct the route.ts comment: only SVT-AV1 and av1_nvenc lose alpha (rav1e keeps it). Do NOT change the routing rule itself (aom-only for alpha stays - it is the conservative correct choice). (4) RELEASE PREP: bump package.json version to 0.1.5, add a CHANGELOG.md [0.1.5] entry (Keep a Changelog format, dated 2026-08-06) covering the alpha routing fix (528ced4), the even-dimension Firefox fix, and the propertiesToHash version hashing. Update README.md's routing caveats section (it currently documents the NVENC chroma guard around line 133) to also document the alpha guard and the even-dimension clamp. VERIFY: bun run test && bun run typecheck && bun run build all pass; every new behaviour has a test; no existing test was weakened. Do not commit - the loop owns git.",
+  "maxIterations": 5,
+  "models": [
+    "openrouter/deepseek/deepseek-v4-pro",
+    "openrouter/z-ai/glm-5"
+  ],
+  "stallPatience": 2,
+  "tools": [
+    "read",
+    "edit",
+    "write",
+    "bash"
+  ],
+  "writeScope": [
+    "src/**",
+    "tests/**",
+    "README.md",
+    "CHANGELOG.md",
+    "package.json"
+  ],
+  "sandbox": "auto",
+  "sensors": [
+    {
+      "name": "test",
+      "cmd": "bun run test",
+      "hint": "Tests must pass. Add coverage for the even-dim clamp and propertiesToHash version - do not weaken existing tests."
+    },
+    {
+      "name": "typecheck",
+      "cmd": "bun run typecheck",
+      "hint": "tsc must be clean."
+    },
+    {
+      "name": "build",
+      "cmd": "bun run build",
+      "hint": "tsc build must succeed."
+    },
+    {
+      "name": "even-dim-helper",
+      "cmd": "rg -q 'even' src/ && rg -ln 'resize' src/encoders/*.ts | xargs -I{} sh -c 'true' && test $(rg -c 'Math.floor|even' src/encoders/avifenc.ts src/encoders/nvenc.ts src/encoders/sharp.ts | rg -c ':') -ge 3",
+      "hint": "All three encoders must apply the even-dimension clamp (via the shared helper) for 4:2:0 AVIF output."
+    },
+    {
+      "name": "hash-has-version",
+      "cmd": "rg -q 'version' src/service.ts && rg -q 'propertiesToHash' src/service.ts",
+      "hint": "service.ts must include the package version in propertiesToHash so upgrades invalidate consumer image caches."
+    },
+    {
+      "name": "rav1e-comment-fixed",
+      "cmd": "! rg -q 'SVT-AV1 and rav1e' src/route.ts src/types.ts",
+      "hint": "The rav1e claim in route.ts is empirically wrong - correct it (only SVT-AV1 and av1_nvenc lose alpha; rav1e keeps it)."
+    },
+    {
+      "name": "version-bumped",
+      "cmd": "[ \"$(jq -r '.version' package.json)\" = \"0.1.5\" ] && rg -q '\\[0.1.5\\]' CHANGELOG.md",
+      "hint": "package.json version must be 0.1.5 and CHANGELOG.md must have a matching [0.1.5] entry."
+    },
+    {
+      "name": "judge",
+      "cmd": "bun ~/.pi/agent/skills/self-correcting-loop/judge.ts --model openrouter/moonshotai/kimi-k3 --spec 'Judge the CURRENT STATE of this astro-image-hq repo against four required improvements. FAIL if any holds: (1) odd-dimension 4:2:0 AVIF outputs are still possible - all three encoders (avifenc.ts, nvenc.ts, sharp.ts) must route their resize through ONE shared even-dimension clamp helper for 4:2:0 (floor to even; 4:4:4 untouched; do not accept triplicated clamp logic); (2) service.ts propertiesToHash lacks a package-version entry (warm consumer caches would keep pre-fix images); (3) src/route.ts or src/types.ts still claims rav1e loses the alpha plane (empirically only SVT-AV1 and av1_nvenc do); (4) release prep missing - package.json version is not 0.1.5, CHANGELOG.md lacks a proper [0.1.5] Keep-a-Changelog entry covering alpha routing + even-dim Firefox fix + version hashing, or README.md routing caveats do not document the alpha guard and even-dimension clamp. Also FAIL if tests were weakened, new behaviour lacks tests, the routing rule for alpha was loosened (aom-only must stay), or the diff touches files outside src/ tests/ README.md CHANGELOG.md package.json. PASS only when all four improvements are correctly implemented and tested.'",
+      "hint": "The judge found an improvement missing or done wrong. Finish it - do not argue with the judge by weakening the spec."
+    }
+  ]
+}
