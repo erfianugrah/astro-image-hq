@@ -51,7 +51,13 @@ jobs:
           bun run test
           bun run build
 
+      # OIDC trusted publishing needs npm >= 11.15.0; node 22 bundles 10.x.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      # No NODE_AUTH_TOKEN: auth is OIDC trusted publishing (id-token: write
+      # above + the trust relationship configured on the package via
+      # `npm trust github --allow-publish`). Token-based publishes are no
+      # longer supported by npm for 2FA accounts.
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
