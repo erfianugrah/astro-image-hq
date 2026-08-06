@@ -196,6 +196,33 @@ bun run typecheck
 bun run build
 ```
 
+## Releasing
+
+Releases are tag-driven and publish via npm **OIDC trusted publishing** -
+there is no `NPM_TOKEN` secret to rotate:
+
+```sh
+# 1. bump version in package.json and src/version.ts (a test enforces sync)
+# 2. add a CHANGELOG.md entry
+# 3. commit, tag, push (example: the next hypothetical version)
+git tag -a v0.1.6 -m "..."
+git push origin main v0.1.6
+```
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`: verify tag matches
+`package.json`, typecheck, test, build, then `npm publish --provenance`.
+Auth is the OIDC trust relationship configured on the npm package
+(GitHub Actions, this repo, `release.yml`) - GitHub mints a short-lived
+OIDC token per run and npm exchanges it for publish rights.
+
+Two gotchas, both encoded in the workflow comments:
+
+- Do NOT add `registry-url` to `actions/setup-node` - it writes an `.npmrc`
+  with an empty `_authToken`, and npm CLI prefers token auth over OIDC
+  (publish then 404s).
+- Rerunning a tag-triggered run reuses the workflow **as of the tagged
+  commit**, not `main`. If you fix the workflow, move the tag.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
