@@ -22,6 +22,7 @@ const flatBright: Characteristics = {
   stdevLuma: 5,
   isDark: false,
   hasGradient: false,
+  hasAlpha: false,
 };
 
 const darkGradient: Characteristics = {
@@ -29,6 +30,7 @@ const darkGradient: Characteristics = {
   stdevLuma: 28,
   isDark: true,
   hasGradient: true,
+  hasAlpha: false,
 };
 
 describe("decide — preference walk", () => {
@@ -486,5 +488,80 @@ describe("decide — purity", () => {
     });
     expect(JSON.stringify(BUILTIN_PROFILES.photo)).toBe(beforeProfile);
     expect(JSON.stringify(darkGradient)).toBe(beforeChar);
+  });
+});
+
+describe("decide - alpha transparency routing", () => {
+  const alphaLogo: Characteristics = {
+    meanLuma: 128,
+    stdevLuma: 40,
+    isDark: false,
+    hasGradient: true,
+    hasAlpha: true,
+  };
+
+  it("skips NVENC entirely for alpha-bearing images", () => {
+    // balanced: [nvenc, avifenc, sharp]; without the alpha guard NVENC would win.
+    const d = decide({
+      caps: fullCaps,
+      char: alphaLogo,
+      profile: BUILTIN_PROFILES.balanced,
+      format: "avif",
+      width: 360,
+      height: 360,
+    });
+    expect(d.encoder).not.toBe("nvenc");
+    expect(d.reason).toContain("alpha");
+  });
+
+  it("drops the svt codec on avifenc for alpha-bearing images", () => {
+    // photo profile avif config uses codec svt on the 4:2:0 fast path.
+    const d = decide({
+      caps: fullCaps,
+      char: alphaLogo,
+      profile: BUILTIN_PROFILES.photo,
+      format: "avif",
+      width: 360,
+      height: 360,
+    });
+    expect(d.encoder).toBe("avifenc");
+    expect(d.config.codec).toBeUndefined();
+  });
+
+  it("keeps codec routing unchanged for opaque images", () => {
+    const d = decide({
+      caps: fullCaps,
+      char: flatBright,
+      profile: BUILTIN_PROFILES.photo,
+      format: "avif",
+      width: 360,
+      height: 360,
+    });
+    // Opaque: the normal fast path is untouched.
+    expect(d.encoder).toBe("nvenc");
+  });
+
+  it("keeps an explicit aom codec for alpha-bearing images", () => {
+    const profile = {
+      ...BUILTIN_PROFILES.balanced,
+      formats: {
+        ...BUILTIN_PROFILES.balanced.formats,
+        avif: {
+          ...BUILTIN_PROFILES.balanced.formats.avif,
+          encoderPreference: ["avifenc", "sharp"] as const,
+          codec: "aom" as const,
+        },
+      },
+    };
+    const d = decide({
+      caps: fullCaps,
+      char: alphaLogo,
+      profile,
+      format: "avif",
+      width: 360,
+      height: 360,
+    });
+    expect(d.encoder).toBe("avifenc");
+    expect(d.config.codec).toBe("aom");
   });
 });

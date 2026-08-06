@@ -37,16 +37,28 @@ export async function analyzeImage(
     withoutEnlargement: true,
   });
 
-  const stats = await pipeline.stats();
+  const [stats, meta] = await Promise.all([
+    pipeline.stats(),
+    // metadata() on a separate instance: pipeline operations are irrelevant
+    // to it, but this keeps the contract obvious.
+    sharp(input).metadata(),
+  ]);
   const channels = stats.channels;
   // Sharp's channels follow input order. For RGB images that's [R, G, B].
-  // Grayscale images have a single channel; alpha is dropped from stats.
+  // When an alpha channel exists it is included as the LAST stats channel
+  // ([R,G,B,A] or [gray,A]).
   const r = channels[0];
   const g = channels[1] ?? r;
   const b = channels[2] ?? r;
   if (!r || !g || !b) {
     throw new Error("analyzeImage: stats() returned no channels");
   }
+
+  // Meaningful transparency = alpha channel present AND not uniformly
+  // opaque. A PNG exported with an all-255 alpha channel should stay on
+  // the fast encoder paths.
+  const alpha = meta.hasAlpha ? channels[channels.length - 1] : undefined;
+  const hasAlpha = alpha !== undefined && alpha.min < 255;
 
   const meanLuma = REC709.r * r.mean + REC709.g * g.mean + REC709.b * b.mean;
   const stdevLuma =
@@ -57,5 +69,6 @@ export async function analyzeImage(
     stdevLuma,
     isDark: meanLuma < DARK_THRESHOLD,
     hasGradient: stdevLuma > GRADIENT_STDEV_THRESHOLD,
+    hasAlpha,
   };
 }

@@ -71,6 +71,15 @@ export interface Characteristics {
   readonly isDark: boolean;
   /** True when there is significant gradient (not flat). */
   readonly hasGradient: boolean;
+  /**
+   * True when the image carries meaningful transparency: the input has an
+   * alpha channel AND its minimum value is below 255. An alpha channel that
+   * is uniformly opaque does not count - those images encode fine on the
+   * fast paths. Alpha matters because the 4:2:0 fast encoders (SVT-AV1 via
+   * avifenc, av1_nvenc) drop the alpha plane, rendering transparent logos
+   * as solid black; alpha-bearing images must route to aom or sharp.
+   */
+  readonly hasAlpha: boolean;
 }
 
 // ---------------------------------------------------------------------------

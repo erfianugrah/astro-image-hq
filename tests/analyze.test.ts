@@ -72,3 +72,43 @@ describe("analyzeImage", () => {
     expect(c.meanLuma).toBeLessThan(60);
   });
 });
+
+describe("analyzeImage - alpha detection", () => {
+  it("detects meaningful transparency (alpha min < 255)", async () => {
+    const buf = await sharp({
+      create: {
+        width: 64,
+        height: 64,
+        channels: 4,
+        background: { r: 10, g: 10, b: 10, alpha: 0.5 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const c = await analyzeImage(new Uint8Array(buf));
+    expect(c.hasAlpha).toBe(true);
+  });
+
+  it("reports no alpha for opaque RGB images", async () => {
+    const buf = await png({ r: 200, g: 200, b: 200 });
+    const c = await analyzeImage(new Uint8Array(buf));
+    expect(c.hasAlpha).toBe(false);
+  });
+
+  it("treats a uniformly-opaque alpha channel as opaque (no rerouting)", async () => {
+    // Many editors export PNGs with an all-255 alpha channel; these must
+    // stay on the fast encoder paths.
+    const buf = await sharp({
+      create: {
+        width: 64,
+        height: 64,
+        channels: 4,
+        background: { r: 200, g: 200, b: 200, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const c = await analyzeImage(new Uint8Array(buf));
+    expect(c.hasAlpha).toBe(false);
+  });
+});

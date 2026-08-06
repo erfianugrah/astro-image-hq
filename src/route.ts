@@ -90,9 +90,15 @@ export function decide(args: DecideArgs): RoutingDecision {
   // Track skipped encoders so the reason string explains the choice.
   const skipped: string[] = [];
   for (const candidate of config.encoderPreference) {
+    // av1_nvenc cannot carry an alpha plane - transparent images would
+    // render as solid black. Route them past NVENC entirely.
+    if (char.hasAlpha && candidate === "nvenc") {
+      skipped.push("nvenc: alpha transparency unsupported");
+      continue;
+    }
     const reason = encoderReason(candidate, caps, config, gpuMax, args.width, args.height);
     if (reason.ok) {
-      const finalized = finalizeConfig(candidate, config, caps, args.width, args.height);
+      const finalized = finalizeConfig(candidate, config, caps, args.width, args.height, char.hasAlpha);
       const note = finalized.codecDropped
         ? `${reason.note} (codec=${config.codec} ${finalized.dropReason}, using default)`
         : reason.note;
@@ -174,6 +180,11 @@ interface FinalizedConfig {
  *      with "Source Width must be even for YUV_420 colorspace"); aom
  *      handles odd dimensions internally.
  *
+ * Additionally, when the image has meaningful transparency, any codec
+ * other than aom is dropped: the SVT-AV1 and rav1e 4:2:0 paths lose the
+ * alpha plane (transparent logos render as solid black), while aom
+ * encodes the alpha auxiliary plane correctly.
+ *
  * In any of those cases, the codec field is removed so avifenc falls
  * back to its built-in default (typically aom), which is permissive.
  */
@@ -183,9 +194,14 @@ function finalizeConfig(
   caps: Capabilities,
   width: number | undefined,
   height: number | undefined,
+  hasAlpha = false,
 ): FinalizedConfig {
   if (encoder !== "avifenc" || !config.codec) {
     return { config, codecDropped: false };
+  }
+  // Alpha check: only aom carries the alpha plane reliably.
+  if (hasAlpha && config.codec !== "aom") {
+    return dropCodec(config, "alpha transparency needs aom");
   }
   // Capability check
   if (!caps.avifenc?.codecs.includes(config.codec)) {

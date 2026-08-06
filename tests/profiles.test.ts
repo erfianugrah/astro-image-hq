@@ -47,6 +47,7 @@ describe("BUILTIN_PROFILES", () => {
         stdevLuma: 28,
         isDark: true,
         hasGradient: true,
+        hasAlpha: false,
       }),
     ).toBe(true);
     // Don't trigger on bright flat image
@@ -56,6 +57,7 @@ describe("BUILTIN_PROFILES", () => {
         stdevLuma: 5,
         isDark: false,
         hasGradient: false,
+        hasAlpha: false,
       }),
     ).toBe(false);
   });
