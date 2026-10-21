@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-10-21
+
+### Fixed
+
+- Astro 7.4 passes a `logger` as the 4th argument to an image service's
+  `transform()`, and the built-in sharp service calls `logger.warn()` on its
+  SVG-mismatch and unsupported-format paths. The hq service now forwards the
+  logger when it falls back to sharp; before, those paths would throw on
+  `undefined`. Dev dependency bumped to astro 7.4.1.
+
 ## [0.1.5] - 2026-08-06
 
 ### Fixed

@@ -84,18 +84,19 @@ const service: LocalImageService = {
     PKG_VERSION,
   ],
 
-  async transform(inputBuffer, transform, imageConfig) {
+  // logger is the 4th argument since Astro 7.4; older Astro passes undefined.
+  async transform(inputBuffer, transform, imageConfig, logger) {
     const opts = (imageConfig.service.config ?? {}) as HqOptions;
     if (!opts.profile) {
       // Misconfigured — defer entirely to sharp service.
-      return sharpService.transform(inputBuffer, transform, imageConfig);
+      return sharpService.transform(inputBuffer, transform, imageConfig, logger);
     }
 
     const state = await loadState(opts);
     const format = transform.format as OutputFormat | undefined;
 
     if (!format || !SUPPORTED_FORMATS.has(format)) {
-      return sharpService.transform(inputBuffer, transform, imageConfig);
+      return sharpService.transform(inputBuffer, transform, imageConfig, logger);
     }
 
     const input = inputBuffer instanceof Uint8Array
