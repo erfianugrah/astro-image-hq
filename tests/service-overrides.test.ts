@@ -12,7 +12,7 @@
  * We use "photo" so the boost path is reachable.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -22,6 +22,10 @@ import service from "../src/service.js";
 const photoConfig = {
   service: { config: { profile: "photo", log: "off" } },
 } as unknown as Parameters<typeof service.transform>[2];
+
+// Astro 7.4+ passes a runtime logger as transform()'s 4th argument.
+const makeLogger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
+const logger = makeLogger() as unknown as Parameters<typeof service.transform>[3];
 
 const brightFlat = async (size = 256) => {
   const data = Buffer.alloc(size * size * 3);
@@ -67,11 +71,13 @@ describe("service: override precedence (boost as quality floor)", () => {
       input,
       { src: "b-lo", format: "avif", width: 256, height: 256, quality: 30 },
       photoConfig,
+      logger,
     );
     const hi = await service.transform(
       input,
       { src: "b-hi", format: "avif", width: 256, height: 256, quality: 95 },
       photoConfig,
+      logger,
     );
 
     expect(lo.format).toBe("avif");
@@ -86,6 +92,7 @@ describe("service: override precedence (boost as quality floor)", () => {
       input,
       { src: "p-str", format: "avif", width: 256, height: 256, quality: "70" },
       photoConfig,
+      logger,
     );
     expect(result.format).toBe("avif");
     expect(result.data.byteLength).toBeGreaterThan(0);
@@ -100,11 +107,13 @@ describe("service: override precedence (boost as quality floor)", () => {
       input,
       { src: "d-lo", format: "avif", width: 384, height: 384, quality: 30 },
       photoConfig,
+      logger,
     );
     const hi = await service.transform(
       input,
       { src: "d-hi", format: "avif", width: 384, height: 384, quality: 95 },
       photoConfig,
+      logger,
     );
 
     expect(lo.format).toBe("avif");
@@ -128,8 +137,24 @@ describe("propertiesToHash", () => {
     const pkgVersion = JSON.parse(
       readFileSync(resolve(__dirname, "..", "package.json"), "utf-8"),
     ).version;
-    expect(pkgVersion).toBe("0.1.5");
+    expect(pkgVersion).toBe("0.1.6");
     expect(service.propertiesToHash).toBeDefined();
     expect(service.propertiesToHash).toContain(pkgVersion);
+  });
+});
+
+describe("sharp fallback forwards the Astro logger (0.1.6)", () => {
+  it("an svg request on a PNG source warns through the logger instead of throwing", async () => {
+    const input = new Uint8Array(await brightFlat(64));
+    const log = makeLogger();
+    const result = await service.transform(
+      input,
+      { src: "not-really.svg", format: "svg", width: 64, height: 64 },
+      photoConfig,
+      log as unknown as Parameters<typeof service.transform>[3],
+    );
+    expect(result.data.byteLength).toBeGreaterThan(0);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(String(log.warn.mock.calls[0]?.[0])).toMatch(/expected an SVG/);
   });
 });

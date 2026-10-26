@@ -6,4 +6,4 @@
  * service into dist/.prerender (the relative path no longer resolves), so
  * the version is a plain constant instead.
  */
-export const PKG_VERSION = "0.1.5";
+export const PKG_VERSION = "0.1.6";
